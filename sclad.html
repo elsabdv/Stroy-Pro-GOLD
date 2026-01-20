@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stroy-Pro GOLD</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+    
+    <style>
+        :root { --bg: #f4f7fe; --primary: #3b82f6; --danger: #ef4444; --success: #22c55e; --dark: #1e293b; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; font-family: 'Segoe UI', Roboto, sans-serif; }
+        body { margin: 0; background: var(--bg); color: var(--dark); height: 100vh; overflow: hidden; }
+        
+        /* Навигация */
+        .sidebar { position: fixed; bottom: 0; width: 100%; height: 75px; background: white; display: flex; border-top: 2px solid #e2e8f0; z-index: 1000; box-shadow: 0 -4px 10px rgba(0,0,0,0.05); }
+        .nav-btn { flex: 1; background: none; border: none; color: #94a3b8; font-size: 11px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 600; }
+        .nav-btn.active { color: var(--primary); }
+        .nav-btn span { font-size: 26px; margin-bottom: 3px; }
+
+        /* Контент */
+        .main { height: calc(100vh - 75px); overflow-y: auto; padding: 15px; }
+        .page { display: none; animation: fadeIn 0.3s ease; } 
+        .page.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Карточки */
+        .card { background: white; padding: 18px; border-radius: 22px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 15px; border: 1px solid #eef2f6; position: relative; }
+        .dark-card { background: var(--dark); color: white; border: none; }
+        
+        /* Кнопки */
+        .btn { border: none; border-radius: 15px; padding: 15px; font-weight: 700; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; transition: 0.2s; }
+        .btn:active { transform: scale(0.96); }
+        .btn-blue { background: var(--primary); color: white; }
+        .btn-green { background: var(--success); color: white; }
+        .btn-red { background: var(--danger); color: white; }
+        .btn-outline { background: #f8fafc; border: 1px solid #cbd5e1; color: var(--dark); }
+
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        input, select { width: 100%; padding: 15px; margin: 8px 0; border: 1.5px solid #e2e8f0; border-radius: 14px; font-size: 16px; background: #fff; outline: none; }
+        input:focus { border-color: var(--primary); }
+
+        /* Модалки */
+        .modal { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: white; padding: 25px; border-radius: 30px 30px 0 0; z-index: 5000; max-height: 90vh; overflow-y: auto; box-shadow: 0 -10px 40px rgba(0,0,0,0.3); }
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); z-index: 4000; backdrop-filter: blur(6px); }
+        
+        .badge { font-size: 10px; padding: 4px 10px; border-radius: 10px; color: white; font-weight: 800; text-transform: uppercase; }
+        .history-row { font-size: 13px; padding: 12px 0; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: center; }
+        
+        /* Спец блоки */
+        .stat-label { color: #94a3b8; font-size: 12px; font-weight: 600; }
+        .stat-val { font-size: 22px; font-weight: 800; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <button class="nav-btn active" onclick="switchPage('finances', this)"><span>💳</span>Касса</button>
+        <button class="nav-btn" onclick="switchPage('stock', this)"><span>📦</span>Склад</button>
+        <button class="nav-btn" onclick="switchPage('clients', this)"><span>👥</span>Клиенты</button>
+    </div>
+
+    <div class="main">
+        <div id="p-finances" class="page active">
+            <h2 style="margin: 5px 0 20px 0;">💰 Мой Бизнес</h2>
+            <div class="card dark-card">
+                <div class="grid">
+                    <div><span class="stat-label">Наличные</span><div id="f-cash" class="stat-val" style="color:#4ade80;">0</div></div>
+                    <div><span class="stat-label">На карте</span><div id="f-card" class="stat-val" style="color:#60a5fa;">0</div></div>
+                </div>
+                <div style="margin-top:20px; display:grid; grid-template-columns: 1fr 1fr; gap:10px; border-top:1px solid #334155; padding-top:15px;">
+                    <div><span class="stat-label">Чистая прибыль</span><div id="f-profit" style="color:#fbbf24; font-weight:bold;">0</div></div>
+                    <div><span class="stat-label">Товар в складе</span><div id="f-stock-sum" style="color:#f8fafc; font-weight:bold;">0</div></div>
+                </div>
+                <div class="grid" style="margin-top:20px;">
+                    <button class="btn btn-blue" onclick="showMod('m-transfer')">⇄ Перевод</button>
+                    <button class="btn btn-blue" onclick="askPin('m-adjust')">⚙️ Правка</button>
+                </div>
+            </div>
+
+            <div class="grid" style="margin-bottom:20px;">
+                <button class="btn btn-outline" onclick="exportData()">💾 Бэкап</button>
+                <button class="btn btn-outline" onclick="document.getElementById('fileIn').click()">📂 Загрузить</button>
+                <input type="file" id="fileIn" style="display:none" onchange="importData(this)">
+            </div>
+
+            <h4 style="color:var(--danger)">🔴 Долги нам (Клиенты): <span id="sum-c-debt" style="float:right">0</span></h4>
+            <div id="list-c-debts" class="card" style="padding:0; max-height:150px; overflow-y:auto;"></div>
+
+            <h4 style="color:var(--primary)">🚛 Наши долги (Поставщики): <span id="sum-v-debt" style="float:right">0</span></h4>
+            <div id="list-v-debts" class="card" style="padding:0; max-height:150px; overflow-y:auto;"></div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:30px;">
+                <h4>📊 Журнал кассы</h4>
+                <div style="display:flex; gap:10px;">
+                    <button onclick="doExport('fin', 'xlsx')" style="color:green; border:0; background:none; font-weight:bold;">XLS</button>
+                    <button onclick="doExport('fin', 'pdf')" style="color:red; border:0; background:none; font-weight:bold;">PDF</button>
+                </div>
+            </div>
+            <div id="fin-history" class="card" style="padding:0; max-height:300px; overflow-y:auto;"></div>
+            <button class="btn btn-red" style="font-size:10px; padding:10px;" onclick="clearHistory('logs')">УДАЛИТЬ ИСТОРИЮ КАССЫ</button>
+        </div>
+
+        <div id="p-stock" class="page">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h2 style="margin:0;">📦 Склад</h2>
+                <button class="btn btn-blue" style="width:auto; padding:10px 20px;" onclick="showMod('m-add-stock')">+ Закуп</button>
+            </div>
+            <div id="stock-list"></div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:30px;">
+                <h4>📜 История закупа</h4>
+                <div style="display:flex; gap:10px;">
+                    <button onclick="doExport('stock', 'xlsx')" style="color:green; border:0; background:none; font-weight:bold;">XLS</button>
+                    <button onclick="doExport('stock', 'pdf')" style="color:red; border:0; background:none; font-weight:bold;">PDF</button>
+                </div>
+            </div>
+            <div id="stock-history" class="card" style="padding:0; max-height:300px; overflow-y:auto;"></div>
+            <button class="btn btn-red" style="font-size:10px; padding:10px;" onclick="clearHistory('stockLogs')">УДАЛИТЬ ИСТОРИЮ СКЛАДА</button>
+        </div>
+
+        <div id="p-clients" class="page">
+            <h2 style="margin:0 0 15px 0;">👥 Клиенты</h2>
+            <button class="btn btn-blue" style="margin-bottom:20px;" onclick="showMod('m-add-client')">+ Добавить клиента</button>
+            <div id="clients-list"></div>
+        </div>
+    </div>
+
+    <div class="overlay" id="overlay" onclick="hideMods()"></div>
+    <div id="print-area"></div>
+
+    <div id="m-pin" class="modal">
+        <h3>🔐 Введите ПИН</h3>
+        <input type="number" id="pin-val" placeholder="****" style="text-align:center; font-size:24px; letter-spacing:10px;">
+        <button class="btn btn-blue" onclick="checkPin()">Войти</button>
+    </div>
+
+    <div id="m-add-stock" class="modal">
+        <h3>📦 Новое поступление</h3>
+        <input type="text" id="st-name" placeholder="Название товара">
+        <div class="grid">
+            <input type="number" id="st-buy" placeholder="Цена закупа">
+            <input type="number" id="st-sell" placeholder="Цена продажи">
+        </div>
+        <input type="number" id="st-qty" placeholder="Количество">
+        <input type="text" id="st-vendor" placeholder="Поставщик">
+        <select id="st-pay-method">
+            <option value="cash">Оплатить Наличными</option>
+            <option value="card">Оплатить Картой</option>
+            <option value="debt">Взять в ДОЛГ</option>
+        </select>
+        <button class="btn btn-blue" onclick="logicAddStock()">Принять товар</button>
+    </div>
+
+    <div id="m-stock-item" class="modal">
+        <h3 id="m-st-title">Товар</h3>
+        <div id="m-st-info"></div>
+        <input type="number" id="m-st-return-qty" placeholder="Сколько вернуть?">
+        <button class="btn btn-red" onclick="logicReturnStock()">Оформить ВОЗВРАТ</button>
+    </div>
+
+    <div id="m-transfer" class="modal">
+        <h3>⇄ Перевод средств</h3>
+        <select id="tr-from"><option value="cash">С Наличных</option><option value="card">С Карты</option></select>
+        <select id="tr-to"><option value="card">На Карту</option><option value="cash">На Нал</option></select>
+        <input type="number" id="tr-sum" placeholder="Сумма перевода">
+        <button class="btn btn-blue" onclick="logicTransfer()">Выполнить перевод</button>
+    </div>
+
+    <div id="m-adjust" class="modal">
+        <h3>⚙️ Корректировка кассы</h3>
+        <select id="adj-wallet"><option value="cash">Наличные</option><option value="card">Карта</option></select>
+        <input type="number" id="adj-sum" placeholder="Сумма">
+        <input type="text" id="adj-note" placeholder="Причина правки">
+        <div class="grid">
+            <button class="btn btn-green" onclick="logicAdjust(true)">Приход (+)</button>
+            <button class="btn btn-red" onclick="logicAdjust(false)">Расход (-)</button>
+        </div>
+    </div>
+
+    <div id="m-sale" class="modal">
+        <h3 id="m-sale-client-name">Продажа</h3>
+        <select id="m-sale-product"></select>
+        <input type="number" id="m-sale-qty" placeholder="Количество">
+        <select id="m-sale-method">
+            <option value="cash">Оплата Налом</option>
+            <option value="card">Оплата Картой</option>
+        </select>
+        <div class="grid">
+            <button class="btn btn-green" onclick="logicSale(true)">ОПЛАЧЕНО</button>
+            <button class="btn btn-blue" onclick="logicSale(false)">В ДОЛГ</button>
+        </div>
+    </div>
+
+    <div id="m-add-client" class="modal">
+        <h3>👥 Новый клиент</h3>
+        <input type="text" id="cl-name" placeholder="ФИО Клиента">
+        <input type="number" id="cl-phone" placeholder="996...">
+        <button class="btn btn-blue" onclick="logicAddClient()">Создать</button>
+    </div>
+
+    <div id="m-pay-vendor" class="modal">
+        <h3 id="v-pay-name">Поставщик</h3>
+        <input type="number" id="v-pay-sum" placeholder="Сумма выплаты">
+        <select id="v-pay-method"><option value="cash">Наличные</option><option value="card">Карта</option></select>
+        <button class="btn btn-green" onclick="logicPayVendor()">Выплатить долг</button>
+    </div>
+
+    <div id="m-pay-client" class="modal">
+        <h3>💰 Прием оплаты</h3>
+        <input type="number" id="cl-pay-sum" placeholder="Сумма">
+        <select id="cl-pay-method"><option value="cash">В Наличные</option><option value="card">На Карту</option></select>
+        <button class="btn btn-green" onclick="logicPayClient()">Подтвердить</button>
+    </div>
+
+    <div id="m-edit-debt" class="modal">
+        <h3>✏️ Изменить долг вручную</h3>
+        <input type="number" id="cl-new-debt" placeholder="Укажите новую сумму долга">
+        <button class="btn btn-red" onclick="logicManualDebt()">Обновить сумму</button>
+    </div>
+
+    <div id="p-client-card" style="position:fixed; inset:0; background:var(--bg); z-index:2000; display:none; flex-direction:column;">
+        <div style="padding:15px; background:white; display:flex; align-items:center; border-bottom:1px solid #ddd; gap:15px;">
+            <button onclick="closeProfile()" style="border:0; background:none; font-size:24px;">⬅️</button>
+            <h3 id="pr-name" style="margin:0;">Клиент</h3>
+        </div>
+        <div style="padding:15px; flex:1; overflow-y:auto;">
+            <div class="card dark-card" style="text-align:center;">
+                <span class="stat-label">ТЕКУЩИЙ ДОЛГ</span>
+                <div id="pr-debt" style="font-size:36px; font-weight:900; color:var(--danger);">0</div>
+                <button class="btn" style="background:rgba(255,255,255,0.1); color:white; font-size:10px; margin-top:10px;" onclick="askPin('m-edit-debt')">ИЗМЕНИТЬ ВРУЧНУЮ</button>
+            </div>
+            <div class="grid">
+                <button class="btn btn-green" onclick="showMod('m-pay-client')">💰 Оплата</button>
+                <button class="btn btn-blue" onclick="openSaleModal()">📦 Продать</button>
+            </div>
+            <div class="grid" style="margin-top:12px;">
+                <button class="btn btn-outline" onclick="doExport('client', 'xlsx')">Excel</button>
+                <button class="btn btn-outline" onclick="doExport('client', 'pdf')">PDF</button>
+            </div>
+            <button class="btn btn-red" style="font-size:10px; margin-top:20px;" onclick="clearClientHistory()">ОЧИСТИТЬ ИСТОРИЮ ЭТОГО КЛИЕНТА</button>
+            <h4 style="margin-top:25px;">🕒 История операций</h4>
+            <div id="pr-history"></div>
+        </div>
+    </div>
+
+    <script>
+        // Инициализация базы данных
+        let db = JSON.parse(localStorage.getItem('stroy_gold_v72')) || {
+            cash: 0, card: 0, profit: 0,
+            stock: [], // {id, name, buy, sell, qty, vendor, method}
+            clients: [], // {id, name, phone, debt, history:[]}
+            vendors: {}, // {name: debt_sum}
+            logs: [], // {date, msg, sum, type}
+            stockLogs: [] // {date, msg, type}
+        };
+
+        const save = () => localStorage.setItem('stroy_gold_v72', JSON.stringify(db));
+
+        // Навигация
+        function switchPage(p, btn) {
+            document.querySelectorAll('.page').forEach(pg => pg.classList.remove('active'));
+            document.getElementById('p-' + p).classList.add('active');
+            document.querySelectorAll('.nav-btn').forEach(nb => nb.classList.remove('active'));
+            btn.classList.add('active');
+            render();
+        }
+
+        function showMod(id) {
+            document.getElementById('overlay').style.display = 'block';
+            document.getElementById(id).style.display = 'block';
+        }
+
+        function hideMods() {
+            document.getElementById('overlay').style.display = 'none';
+            document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
+        }
+
+        // Рендер данных
+        function render() {
+            // Касса
+            document.getElementById('f-cash').innerText = Math.round(db.cash).toLocaleString() + " с";
+            document.getElementById('f-card').innerText = Math.round(db.card).toLocaleString() + " с";
+            document.getElementById('f-profit').innerText = Math.round(db.profit).toLocaleString() + " с";
+            
+            let stockSum = db.stock.reduce((a, b) => a + (b.buy * b.qty), 0);
+            document.getElementById('f-stock-sum').innerText = Math.round(stockSum).toLocaleString() + " с";
+
+            // Долги клиентов
+            let cDebtTotal = 0;
+            let cListH = "";
+            db.clients.forEach(c => {
+                if(c.debt > 0) {
+                    cDebtTotal += c.debt;
+                    cListH += `<div class="history-row" style="padding:10px 15px;"><span>${c.name}</span><b style="color:var(--danger)">${Math.round(c.debt)}</b></div>`;
+                }
+            });
+            document.getElementById('sum-c-debt').innerText = Math.round(cDebtTotal).toLocaleString();
+            document.getElementById('list-c-debts').innerHTML = cListH || "<small style='padding:15px'>Должников нет</small>";
+
+            // Долги поставщикам
+            let vDebtTotal = 0;
+            let vListH = "";
+            for(let vendor in db.vendors) {
+                if(db.vendors[vendor] > 0) {
+                    vDebtTotal += db.vendors[vendor];
+                    vListH += `<div class="history-row" style="padding:10px 15px;">
+                        <span>${vendor}</span>
+                        <div><b style="color:var(--primary); margin-right:10px;">${Math.round(db.vendors[vendor])}</b>
+                        <button onclick="prepPayVendor('${vendor}')" style="border:0; background:var(--primary); color:white; border-radius:5px; padding:2px 8px; font-size:10px;">Выплатить</button></div>
+                    </div>`;
+                }
+            }
+            document.getElementById('sum-v-debt').innerText = Math.round(vDebtTotal).toLocaleString();
+            document.getElementById('list-v-debts').innerHTML = vListH || "<small style='padding:15px'>Долгов нет</small>";
+
+            // Журнал кассы
+            document.getElementById('fin-history').innerHTML = db.logs.map(l => `
+                <div class="history-row" style="padding:10px 15px;">
+                    <div><small style="color:#94a3b8">${l.date}</small><br><b>${l.msg}</b></div>
+                    <b style="color:${l.sum >= 0 ? 'var(--success)' : 'var(--danger)'}">${l.sum > 0 ? '+' : ''}${Math.round(l.sum)}</b>
+                </div>
+            `).join('');
+
+            // Склад
+            document.getElementById('stock-list').innerHTML = db.stock.map((item, idx) => {
+                let color = item.method === 'debt' ? 'var(--danger)' : (item.method === 'cash' ? 'var(--success)' : 'var(--primary)');
+                return `
+                <div class="card" onclick="openStockItem(${idx})">
+                    <span class="badge" style="background:${color}">${item.method}</span>
+                    <b style="font-size:15px;">${item.name}</b><br>
+                    <small style="color:#94a3b8">Закуп: ${item.buy} | Продажа: ${item.sell}</small>
+                    <div style="font-size:20px; font-weight:800; margin-top:8px;">${item.qty} шт</div>
+                    <small style="color:var(--primary)">${item.vendor}</small>
+                </div>
+            `}).join('');
+
+            document.getElementById('stock-history').innerHTML = db.stockLogs.map(l => `<div class="history-row" style="padding:8px 15px;">${l}</div>`).join('');
+
+            // Клиенты
+            document.getElementById('clients-list').innerHTML = db.clients.map((c, idx) => `
+                <div class="card" onclick="openProfile(${idx})">
+                    <b>${c.name}</b>
+                    <div style="float:right; color:${c.debt > 0 ? 'var(--danger)' : 'var(--success)'}; font-weight:bold;">${Math.round(c.debt)} с</div>
+                    <br><small style="color:#94a3b8">${c.phone}</small>
+                </div>
+            `).join('');
+        }
+
+        // --- ЛОГИКА СКЛАДА ---
+        function logicAddStock() {
+            const name = document.getElementById('st-name').value.trim();
+            const buy = Number(document.getElementById('st-buy').value);
+            const sell = Number(document.getElementById('st-sell').value);
+            const qty = Number(document.getElementById('st-qty').value);
+            const vendor = document.getElementById('st-vendor').value.trim() || "Обычный";
+            const method = document.getElementById('st-pay-method').value;
+
+            if(!name || qty <= 0) return alert("Заполни данные!");
+            const total = buy * qty;
+
+            // Защита от минуса
+            if(method === 'cash' && db.cash < total) return alert("Недостаточно наличных!");
+            if(method === 'card' && db.card < total) return alert("Недостаточно денег на карте!");
+
+            // Списание денег
+            if(method === 'cash') db.cash -= total;
+            if(method === 'card') db.card -= total;
+            if(method === 'debt') {
+                db.vendors[vendor] = (db.vendors[vendor] || 0) + total;
+            } else {
+                addLog(`Закуп: ${name} (${qty}шт)`, -total);
+            }
+
+            // Группировка товара
+            let existing = db.stock.find(i => i.name.toLowerCase() === name.toLowerCase() && i.method === method);
+            if(existing) {
+                existing.qty += qty;
+                existing.buy = buy; // Обновляем цену на последнюю
+                existing.sell = sell;
+            } else {
+                db.stock.push({name, buy, sell, qty, vendor, method});
+            }
+
+            db.stockLogs.unshift(`${new Date().toLocaleString()} | ПРИХОД: ${name} (+${qty} шт) | Пост: ${vendor} | ${method.toUpperCase()}`);
+            
+            save(); hideMods(); render();
+            document.getElementById('st-name').value = "";
+        }
+
+        function openStockItem(idx) {
+            db.activeStockIdx = idx;
+            const item = db.stock[idx];
+            document.getElementById('m-st-title').innerText = item.name;
+            document.getElementById('m-st-info').innerHTML = `
+                <p>На складе: <b>${item.qty}</b> шт</p>
+                <p>Метод закупа: <b>${item.method.toUpperCase()}</b></p>
+                <p>Поставщик: <b>${item.vendor}</b></p>
+            `;
+            showMod('m-stock-item');
+        }
+
+        function logicReturnStock() {
+            const q = Number(document.getElementById('m-st-return-qty').value);
+            const item = db.stock[db.activeStockIdx];
+            if(q <= 0 || q > item.qty) return alert("Неверное количество!");
+
+            const refundSum = item.buy * q;
+            
+            if(item.method === 'debt') {
+                db.vendors[item.vendor] -= refundSum;
+            } else {
+                if(item.method === 'cash') db.cash += refundSum;
+                else db.card += refundSum;
+                addLog(`Возврат поставщику: ${item.name}`, refundSum);
+            }
+
+            item.qty -= q;
+            if(item.qty <= 0) db.stock.splice(db.activeStockIdx, 1);
+            
+            db.stockLogs.unshift(`${new Date().toLocaleString()} | ВОЗВРАТ: ${item.name} (-${q} шт) | Баланс обновлен`);
+            save(); hideMods(); render();
+        }
+
+        // --- ЛОГИКА КЛИЕНТОВ ---
+        function logicAddClient() {
+            const n = document.getElementById('cl-name').value.trim();
+            const p = document.getElementById('cl-phone').value.trim();
+            if(!n) return;
+            if(db.clients.find(c => c.phone === p && p !== "")) return alert("Клиент с таким номером уже есть!");
+            
+            db.clients.push({ name: n, phone: p, debt: 0, history: [] });
+            save(); hideMods(); render();
+            document.getElementById('cl-name').value = "";
+        }
+
+        function openProfile(idx) {
+            db.activeClientIdx = idx;
+            const c = db.clients[idx];
+            document.getElementById('p-client-card').style.display = 'flex';
+            document.getElementById('pr-name').innerText = c.name;
+            document.getElementById('pr-debt').innerText = Math.round(c.debt) + " с";
+            
+            document.getElementById('pr-history').innerHTML = c.history.map(h => `
+                <div class="history-row" style="padding:10px 0;">
+                    <div><small>${h.date}</small><br><b>${h.msg}</b></div>
+                    <div style="text-align:right">
+                        <b style="color:${h.sum.toString().includes('+') ? 'var(--success)' : 'var(--danger)'}">${h.sum}</b><br>
+                        <small>ост: ${h.balance}</small>
+                    </div>
+                </div>
+            `).reverse().join('');
+        }
+
+        function closeProfile() {
+            document.getElementById('p-client-card').style.display = 'none';
+            render();
+        }
+
+        function logicPayClient() {
+            const s = Number(document.getElementById('cl-pay-sum').value);
+            const m = document.getElementById('cl-pay-method').value;
+            const c = db.clients[db.activeClientIdx];
+            if(s <= 0) return;
+
+            if(m === 'cash') db.cash += s; else db.card += s;
+            c.debt -= s;
+            c.history.push({ date: new Date().toLocaleString(), msg: `Оплата долга (${m})`, sum: "+" + s, balance: c.debt });
+            addLog(`Оплата долга: ${c.name}`, s);
+            
+            save(); hideMods(); openProfile(db.activeClientIdx);
+        }
+
+        function openSaleModal() {
+            const sel = document.getElementById('m-sale-product');
+            sel.innerHTML = db.stock.map((item, i) => `<option value="${i}">${item.name} (${item.qty}шт) - ${item.sell}с</option>`).join('');
+            document.getElementById('m-sale-client-name').innerText = "Продажа для: " + db.clients[db.activeClientIdx].name;
+            showMod('m-sale');
+        }
+
+        function logicSale(isPaid) {
+            const sIdx = document.getElementById('m-sale-product').value;
+            const q = Number(document.getElementById('m-sale-qty').value);
+            const m = document.getElementById('m-sale-method').value;
+            const c = db.clients[db.activeClientIdx];
+            const item = db.stock[sIdx];
+
+            if(!item || q <= 0 || q > item.qty) return alert("Ошибка в количестве!");
+            
+            const total = item.sell * q;
+            const profit = (item.sell - item.buy) * q;
+            db.profit += profit;
+            item.qty -= q;
+
+            if(isPaid) {
+                if(m === 'cash') db.cash += total; else db.card += total;
+                addLog(`Продажа: ${item.name}`, total);
+                c.history.push({ date: new Date().toLocaleString(), msg: `Купил: ${item.name} (Оплатил)`, sum: "+" + total, balance: c.debt });
+            } else {
+                c.debt += total;
+                c.history.push({ date: new Date().toLocaleString(), msg: `Купил: ${item.name} (В ДОЛГ)`, sum: "-" + total, balance: c.debt });
+            }
+
+            if(item.qty <= 0) db.stock.splice(sIdx, 1);
+            save(); hideMods(); openProfile(db.activeClientIdx);
+        }
+
+        function logicManualDebt() {
+            const newVal = Number(document.getElementById('cl-new-debt').value);
+            const c = db.clients[db.activeClientIdx];
+            c.debt = newVal;
+            c.history.push({ date: new Date().toLocaleString(), msg: "Ручное изменение долга", sum: "!", balance: newVal });
+            save(); hideMods(); openProfile(db.activeClientIdx);
+        }
+
+        // --- ЛОГИКА ФИНАНСОВ ---
+        function logicTransfer() {
+            const sum = Number(document.getElementById('tr-sum').value);
+            const from = document.getElementById('tr-from').value;
+            const to = document.getElementById('tr-to').value;
+
+            if(sum <= 0 || from === to) return alert("Ошибка!");
+            if(from === 'cash' && db.cash < sum) return alert("Мало наличных!");
+            if(from === 'card' && db.card < sum) return alert("Мало денег на карте!");
+
+            if(from === 'cash') { db.cash -= sum; db.card += sum; }
+            else { db.card -= sum; db.cash += sum; }
+
+            addLog(`Перевод: ${from} → ${to}`, 0);
+            save(); hideMods(); render();
+        }
+
+        function logicAdjust(isPlus) {
+            const sum = Number(document.getElementById('adj-sum').value);
+            const wal = document.getElementById('adj-wallet').value;
+            const note = document.getElementById('adj-note').value || "Правка";
+
+            if(sum <= 0) return;
+            if(!isPlus && (wal === 'cash' ? db.cash : db.card) < sum) return alert("Нельзя уйти в минус!");
+
+            if(isPlus) {
+                if(wal === 'cash') db.cash += sum; else db.card += sum;
+                addLog(`Правка (+): ${note}`, sum);
+            } else {
+                if(wal === 'cash') db.cash -= sum; else db.card -= sum;
+                addLog(`Правка (-): ${note}`, -sum);
+            }
+            save(); hideMods(); render();
+        }
+
+        function prepPayVendor(vendor) {
+            db.activeVendor = vendor;
+            document.getElementById('v-pay-name').innerText = vendor + " (Долг: " + db.vendors[vendor] + ")";
+            showMod('m-pay-vendor');
+        }
+
+        function logicPayVendor() {
+            const sum = Number(document.getElementById('v-pay-sum').value);
+            const meth = document.getElementById('v-pay-method').value;
+            if(sum <= 0 || sum > db.vendors[db.activeVendor]) return alert("Сумма неверна!");
+            
+            if(meth === 'cash' && db.cash < sum) return alert("Мало нал!");
+            if(meth === 'card' && db.card < sum) return alert("Мало карта!");
+
+            if(meth === 'cash') db.cash -= sum; else db.card -= sum;
+            db.vendors[db.activeVendor] -= sum;
+            addLog(`Выплата поставщику: ${db.activeVendor}`, -sum);
+            save(); hideMods(); render();
+        }
+
+        // --- СЕРВИСНЫЕ ФУНКЦИИ ---
+        function addLog(msg, sum) {
+            db.logs.unshift({ date: new Date().toLocaleString(), msg, sum });
+        }
+
+        function askPin(nextMod) {
+            db.pendingMod = nextMod;
+            showMod('m-pin');
+        }
+
+        function checkPin() {
+            if(document.getElementById('pin-val').value === "1234") {
+                hideMods();
+                showMod(db.pendingMod);
+            } else alert("Неверный ПИН!");
+            document.getElementById('pin-val').value = "";
+        }
+
+        function clearHistory(key) {
+            if(confirm("Вы уверены? Это удалит только историю, баланс останется.")) {
+                db[key] = [];
+                save(); render();
+            }
+        }
+
+        function clearClientHistory() {
+            if(confirm("Удалить историю этого клиента?")) {
+                db.clients[db.activeClientIdx].history = [];
+                save(); openProfile(db.activeClientIdx);
+            }
+        }
+
+        // ЭКСПОРТ EXCEL & PDF
+        function doExport(type, format) {
+            let data = [];
+            let fileName = `Отчет_${type}_${new Date().toLocaleDateString()}`;
+
+            if(type === 'fin') {
+                data = db.logs.map(l => ({ "Дата": l.date, "Событие": l.msg, "Сумма": l.sum }));
+                data.push({}); // пустая строка
+                data.push({"Дата": "ИТОГ НАЛ:", "Событие": db.cash});
+                data.push({"Дата": "ИТОГ КАРТА:", "Событие": db.card});
+                data.push({"Дата": "ПРИБЫЛЬ:", "Событие": db.profit});
+            } else if(type === 'stock') {
+                data = db.stock.map(i => ({ "Товар": i.name, "Кол-во": i.qty, "Закуп": i.buy, "Продажа": i.sell, "Метод": i.method, "Поставщик": i.vendor }));
+            } else if(type === 'client') {
+                const c = db.clients[db.activeClientIdx];
+                fileName = `Клиент_${c.name}`;
+                data = c.history.map(h => ({ "Дата": h.date, "Действие": h.msg, "Сумма": h.sum, "Остаток": h.balance }));
+            }
+
+            if(format === 'xlsx') {
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Лист1");
+                XLSX.writeFile(wb, fileName + ".xlsx");
+            } else {
+                // PDF экспорт (упрощенно через печать)
+                const area = document.getElementById('print-area');
+                area.innerHTML = `<h2>${fileName}</h2><table border="1" style="width:100%; border-collapse:collapse;">
+                    <tr>${Object.keys(data[0] || {}).map(k => `<th>${k}</th>`).join('')}</tr>
+                    ${data.map(row => `<tr>${Object.values(row).map(v => `<td>${v || ''}</td>`).join('')}</tr>`).join('')}
+                </table>`;
+                window.print();
+            }
+        }
+
+        // БЭКАП
+        function exportData() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(db));
+            const dlAnchorElem = document.createElement('a');
+            dlAnchorElem.setAttribute("href", dataStr);
+            dlAnchorElem.setAttribute("download", "stroy_backup.json");
+            dlAnchorElem.click();
+        }
+
+        function importData(input) {
+            const reader = new FileReader();
+            reader.onload = function() {
+                db = JSON.parse(reader.result);
+                save(); location.reload();
+            };
+            reader.readAsText(input.files[0]);
+        }
+
+        render();
+    </script>
+</body>
+</html>
