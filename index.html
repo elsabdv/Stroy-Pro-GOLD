@@ -284,7 +284,8 @@
             document.getElementById('f-card').innerText = Math.round(db.card).toLocaleString() + " с";
             document.getElementById('f-profit').innerText = Math.round(db.profit).toLocaleString() + " с";
             
-            let stockSum = db.stock.reduce((a, b) => a + (b.buy * b.qty), 0);
+            // Считаем сумму склада по цене ПРОДАЖИ (item.sell вместо item.buy)
+            let stockSum = db.stock.reduce((total, item) => total + (item.sell * item.qty), 0);
             document.getElementById('f-stock-sum').innerText = Math.round(stockSum).toLocaleString() + " с";
 
             // Долги клиентов
@@ -601,38 +602,53 @@
             }
         }
 
-        // ЭКСПОРТ EXCEL & PDF
         function doExport(type, format) {
-            let data = [];
-            let fileName = `Отчет_${type}_${new Date().toLocaleDateString()}`;
+            let title = "";
+            let html = "";
 
+            // 1. Собираем данные в зависимости от типа
             if(type === 'fin') {
-                data = db.logs.map(l => ({ "Дата": l.date, "Событие": l.msg, "Сумма": l.sum }));
-                data.push({}); // пустая строка
-                data.push({"Дата": "ИТОГ НАЛ:", "Событие": db.cash});
-                data.push({"Дата": "ИТОГ КАРТА:", "Событие": db.card});
-                data.push({"Дата": "ПРИБЫЛЬ:", "Событие": db.profit});
+                title = "Отчет по кассе";
+                html = `<table border="1" style="width:100%; border-collapse:collapse;">
+                    <thead><tr style="background:#eee"><th>Дата</th><th>Событие</th><th>Сумма</th></tr></thead>
+                    <tbody>${db.logs.map(l => `<tr><td>${l.date}</td><td>${l.msg}</td><td>${l.sum}</td></tr>`).join('')}</tbody>
+                </table>`;
             } else if(type === 'stock') {
-                data = db.stock.map(i => ({ "Товар": i.name, "Кол-во": i.qty, "Закуп": i.buy, "Продажа": i.sell, "Метод": i.method, "Поставщик": i.vendor }));
+                title = "Состояние склада";
+                html = `<table border="1" style="width:100%; border-collapse:collapse;">
+                    <thead><tr style="background:#eee"><th>Товар</th><th>Кол-во</th><th>Закуп</th><th>Прод.</th><th>Пост.</th></tr></thead>
+                    <tbody>${db.stock.map(i => `<tr><td>${i.name}</td><td>${i.qty}</td><td>${i.buy}</td><td>${i.sell}</td><td>${i.vendor}</td></tr>`).join('')}</tbody>
+                </table>`;
             } else if(type === 'client') {
                 const c = db.clients[db.activeClientIdx];
-                fileName = `Клиент_${c.name}`;
-                data = c.history.map(h => ({ "Дата": h.date, "Действие": h.msg, "Сумма": h.sum, "Остаток": h.balance }));
+                title = "История: " + c.name;
+                html = `<table border="1" style="width:100%; border-collapse:collapse;">
+                    <thead><tr style="background:#eee"><th>Дата</th><th>Действие</th><th>Сумма</th><th>Остаток</th></tr></thead>
+                    <tbody>${c.history.map(h => `<tr><td>${h.date}</td><td>${h.msg}</td><td>${h.sum}</td><td>${h.balance}</td></tr>`).join('')}</tbody>
+                </table>`;
             }
 
             if(format === 'xlsx') {
-                const ws = XLSX.utils.json_to_sheet(data);
+                // Экспорт в Excel оставляем как был (он понимает русский)
+                const table = document.createElement('div');
+                table.innerHTML = html;
+                const ws = XLSX.utils.table_to_sheet(table.querySelector('table'));
                 const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "Лист1");
-                XLSX.writeFile(wb, fileName + ".xlsx");
-            } else {
-                // PDF экспорт (упрощенно через печать)
-                const area = document.getElementById('print-area');
-                area.innerHTML = `<h2>${fileName}</h2><table border="1" style="width:100%; border-collapse:collapse;">
-                    <tr>${Object.keys(data[0] || {}).map(k => `<th>${k}</th>`).join('')}</tr>
-                    ${data.map(row => `<tr>${Object.values(row).map(v => `<td>${v || ''}</td>`).join('')}</tr>`).join('')}
-                </table>`;
-                window.print();
+                XLSX.utils.book_append_sheet(wb, ws, "StroyPro");
+                XLSX.writeFile(wb, `${title}.xlsx`);
+            } 
+            else if(format === 'pdf') {
+                // ИСПРАВЛЕНИЕ: Печать через скрытое окно (Русский язык будет работать!)
+                const printWindow = window.open('', '', 'height=600,width=800');
+                printWindow.document.write('<html><head><title>' + title + '</title>');
+                printWindow.document.write('<style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;} th,td{border:1px solid #ddd;padding:8px;text-align:left;} th{background:#3b82f6;color:white;}</style>');
+                printWindow.document.write('</head><body>');
+                printWindow.document.write('<h2>' + title + '</h2>');
+                printWindow.document.write('<p>Дата: ' + new Date().toLocaleString() + '</p>');
+                printWindow.document.write(html);
+                printWindow.document.write('</body></html>');
+                printWindow.document.close();
+                printWindow.print(); // Откроется системное окно сохранения в PDF
             }
         }
 
@@ -657,5 +673,4 @@
         render();
     </script>
 </body>
-
 </html>
